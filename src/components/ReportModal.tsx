@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { InspectionSession } from '../types';
-import { X, Printer, CheckCircle2, AlertTriangle, XCircle, ShieldCheck, Download, Award } from 'lucide-react';
+import { X, Printer, CheckCircle2, AlertTriangle, XCircle, ShieldCheck, Download, Award, Loader2 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { getPhotoDataUrl } from '../services/storage';
 
 interface ReportModalProps {
   session: InspectionSession;
@@ -16,9 +18,125 @@ export const ReportModal: React.FC<ReportModalProps> = ({ session, onClose }) =>
 
   const totalDefectsCount = zones.reduce((acc, z) => acc + z.defects.length, 0);
   const overallStatus = failedZones.length > 0 ? 'FAIL' : warnZones.length > 0 ? 'WARN' : 'PASS';
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPdf = async () => {
+    setIsGenerating(true);
+    try {
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const M = 14;
+      const W = 210 - M * 2;
+      let y = 22;
+
+      // Header
+      doc.setFontSize(9);
+      doc.setTextColor(74, 142, 255);
+      doc.text('AI OPTICAL AUTOMOTIVE INSPECTION REPORT', M, y);
+      y += 6;
+      doc.setFontSize(17);
+      doc.setTextColor(0, 0, 0);
+      doc.text(vehicle.makeModel, M, y);
+      y += 6;
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text(`VIN: ${vehicle.vin}   Inspector: ${vehicle.inspectorName}   Date: ${new Date().toLocaleDateString()}`, M, y);
+      y += 5;
+      doc.setFontSize(12);
+      doc.setTextColor(overallStatus === 'FAIL' ? 220 : overallStatus === 'WARN' ? 200 : 30, overallStatus === 'FAIL' ? 40 : overallStatus === 'WARN' ? 130 : 150, overallStatus === 'FAIL' ? 40 : overallStatus === 'WARN' ? 0 : 80);
+      doc.text(`VERDICT: ${overallStatus}`, M, y);
+      y += 9;
+
+      // Summary
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Checked Zones: ${completedZones.length}/${zones.length}   Passed: ${passZones.length}   Defected: ${failedZones.length}   Total Defects: ${totalDefectsCount}`, M, y);
+      y += 8;
+
+      // Table header
+      doc.setFillColor(235, 238, 245);
+      doc.rect(M, y, W, 7, 'F');
+      doc.setFontSize(8.5);
+      doc.setTextColor(60, 60, 60);
+      doc.text('ZONE', M + 2, y + 5);
+      doc.text('STATUS', M + 80, y + 5);
+      doc.text('CONF', M + 104, y + 5);
+      doc.text('FINDINGS', M + 126, y + 5);
+      y += 7;
+
+      zones.forEach((zone) => {
+        const findings = zone.defects.length ? zone.defects.map((d) => d.type).join(', ') : zone.notes || 'Clear';
+        doc.setFontSize(8);
+        doc.setTextColor(0, 0, 0);
+        doc.text(zone.name, M + 2, y + 4, { maxWidth: 74 });
+        doc.text(zone.status, M + 80, y + 4);
+        doc.text(zone.confidence > 0 ? `${zone.confidence}%` : 'N/A', M + 104, y + 4);
+        doc.text(findings, M + 126, y + 4, { maxWidth: 68 });
+        y += 8;
+        if (y > 280) {
+          doc.addPage();
+          y = 20;
+        }
+      });
+      y += 6;
+
+      // Defect detail per zone with embedded captured photo
+      for (const zone of [...failedZones, ...warnZones]) {
+        if (zone.defects.length === 0) continue;
+        if (y > 250) {
+          doc.addPage();
+          y = 20;
+        }
+
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`${zone.name} — ${zone.defects.length} defect(s)`, M, y);
+        y += 4;
+
+        let photo: string | null = null;
+        try {
+          photo = await getPhotoDataUrl(zone.id);
+        } catch {
+          photo = null;
+        }
+        if (photo) {
+          const fmt = photo.includes('image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(photo, fmt, M, y, 46, 35);
+          y += 39;
+        }
+
+        zone.defects.forEach((d) => {
+          doc.setFontSize(8.5);
+          doc.setTextColor(200, 50, 50);
+          const b = d.bbox || { x: 0, y: 0, width: 0, height: 0 };
+          doc.text(
+            `${d.type.toUpperCase()} — ${d.confidence}% conf (${d.severity})   bbox: x${Math.round(b.x)}% y${Math.round(b.y)}% w${Math.round(b.width)}% h${Math.round(b.height)}%`,
+            M + 2,
+            y + 4,
+            { maxWidth: 180 }
+          );
+          y += 5;
+          if (y > 285) {
+            doc.addPage();
+            y = 20;
+          }
+        });
+        y += 4;
+      }
+
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Generated ${new Date().toLocaleString()} — Automotive AI Inspection PoC (on-device inference)`, M, 290);
+
+      doc.save(`inspection-report-${vehicle.vin || 'vehicle'}.pdf`);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -172,10 +290,22 @@ export const ReportModal: React.FC<ReportModalProps> = ({ session, onClose }) =>
           <div className="flex gap-2 print:hidden">
             <button
               onClick={handlePrint}
-              className="bg-[#4d8eff] hover:bg-[#adc6ff] text-[#002e6a] px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md"
+              className="bg-[#201f1f] hover:bg-[#353534] text-[#e5e2e1] border border-[#424754] px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md"
             >
               <Printer className="w-4 h-4" />
-              <span>Print / Export PDF</span>
+              <span>Print</span>
+            </button>
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isGenerating}
+              className="bg-[#4d8eff] hover:bg-[#adc6ff] text-[#002e6a] px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md disabled:opacity-60"
+            >
+              {isGenerating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{isGenerating ? 'Generating...' : 'Download PDF'}</span>
             </button>
           </div>
         </div>

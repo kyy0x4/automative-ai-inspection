@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { InspectionSession, RealtimeMessage, Defect, ZoneStatus } from '../types';
 import { INITIAL_SESSION } from '../data/initialData';
+import { APP_CONFIG } from '../config';
+import { initAI, analyzeImage, getModelStatus } from '../services/aiEngine';
+import { savePhoto } from '../services/storage';
 
 export function useRealtimeSession() {
   const [session, setSession] = useState<InspectionSession>(INITIAL_SESSION);
@@ -18,6 +21,14 @@ export function useRealtimeSession() {
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
+
+    // Preload on-device AI model in the background (Edge AI mode)
+    if (APP_CONFIG.useOnDeviceAI) {
+      initAI().then(() => {
+        const st = getModelStatus();
+        addLog(st.ready ? `On-device AI ready (${st.name})` : `On-device AI unavailable: ${st.error}. Using simulated scan.`);
+      });
+    }
 
     const connectWebSocket = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -163,6 +174,34 @@ export function useRealtimeSession() {
       addLog(`Analyzing ${currentZone?.name || zoneId} with AI Vision...`);
 
       try {
+        if (APP_CONFIG.useOnDeviceAI) {
+          // Edge AI: run YOLO inference in-browser, store photo on-device
+          if (imageBase64) {
+            try {
+              await savePhoto(zoneId, imageBase64);
+            } catch (e) {
+              console.warn('Failed to save photo to internal storage:', e);
+            }
+          }
+
+          const result = await analyzeImage(
+            imageBase64 || '',
+            currentZone?.name,
+            `${zoneId}-${Date.now()}`
+          );
+          updateZoneStatus(
+            zoneId,
+            result.status,
+            result.defects,
+            result.notes
+          );
+          addLog(
+            `On-device scan done for ${currentZone?.name}: ${result.status} (${result.defects.length} detections, ${result.modelName})`
+          );
+          return;
+        }
+
+        // Server-side mode: send to Gemini endpoint
         const res = await fetch('/api/ai/analyze-inspection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -184,7 +223,7 @@ export function useRealtimeSession() {
         setIsAnalyzing(false);
       }
     },
-    [session, addLog]
+    [session, addLog, updateZoneStatus]
   );
 
   const resetSession = useCallback(async () => {
