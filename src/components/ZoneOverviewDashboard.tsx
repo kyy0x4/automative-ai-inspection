@@ -36,7 +36,7 @@ export const ZoneOverviewDashboard: React.FC<ZoneOverviewDashboardProps> = ({
   });
 
   return (
-    <div className="flex-1 w-full bg-[#131313] text-[#e5e2e1] pt-20 pb-24 px-4 md:px-8 max-w-7xl mx-auto overflow-y-auto">
+    <div className="flex-1 w-full bg-[#131313] text-[#e5e2e1] pt-6 pb-24 px-4 md:px-8 max-w-7xl mx-auto overflow-y-auto">
       {/* Progress Visualization Banner */}
       <section className="mb-6 bg-[#1c1b1b] border border-[#424754] rounded-xl p-6 shadow-xl flex flex-col gap-3">
         <div className="flex justify-between items-end flex-wrap gap-2">

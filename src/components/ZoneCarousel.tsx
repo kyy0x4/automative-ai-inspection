@@ -52,7 +52,7 @@ export const ZoneCarousel: React.FC<ZoneCarouselProps> = ({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#201f1f]/95 backdrop-blur-md border-t border-[#424754] px-3 pt-2 pb-3 select-none">
+    <div className="absolute bottom-0 left-0 right-0 z-50 bg-[#201f1f]/95 backdrop-blur-md border-t border-[#424754] px-3 pt-2 pb-3 select-none">
       {/* Header Row: label + scroll arrows + counter */}
       <div className="flex items-center justify-between mb-2 px-1">
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#8c909f] flex items-center gap-1.5">

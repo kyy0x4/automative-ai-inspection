@@ -10,9 +10,6 @@ import {
   Lightbulb,
   Sliders,
   Upload,
-  CheckCircle2,
-  XCircle,
-  Eye,
   PlusCircle,
 } from 'lucide-react';
 
@@ -45,6 +42,7 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
 }) => {
   const [useLiveWebcam, setUseLiveWebcam] = useState<boolean>(true);
   const [webcamError, setWebcamError] = useState<string | null>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -80,29 +78,71 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
     };
   }, [useLiveWebcam]);
 
-  // Handle image upload from user device
+  // Discard pending photo when switching inspection zone
+  useEffect(() => {
+    setCapturedImage(null);
+  }, [currentZone.id]);
+
+  // Capture a single frame from the live webcam into a preview image
+  const handleShutter = () => {
+    if (capturedImage) {
+      setCapturedImage(null);
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) {
+      setWebcamError('Camera not ready. Tap "Enable Camera" to retry.');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
+    setWebcamError(null);
+  };
+
+  const handleAnalyze = () => {
+    if (capturedImage) {
+      onTriggerAiScan(currentZone.id, capturedImage);
+    }
+  };
+
+  // Handle image upload from user device (opens as captured preview, then Analyze)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = reader.result as string;
-        onTriggerAiScan(currentZone.id, base64);
+        setCapturedImage(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
+  const showLiveFeed = useLiveWebcam && !capturedImage;
+  const isCaptured = !!capturedImage;
+
   return (
-    <div className="relative flex-1 w-full h-[calc(100vh-4rem)] bg-[#0e0e0e] overflow-hidden flex flex-col justify-between select-none">
+    <div className="relative flex-1 w-full h-full bg-[#0e0e0e] overflow-hidden select-none">
       {/* Viewport Canvas & Background Feed */}
       <div className="absolute inset-0 w-full h-full">
-        {useLiveWebcam ? (
+        {showLiveFeed ? (
           <video
             ref={videoRef}
             playsInline
             muted
             className="w-full h-full object-cover filter contrast-105 brightness-95"
+          />
+        ) : isCaptured ? (
+          <img
+            src={capturedImage || undefined}
+            alt="Captured inspection photo"
+            className="w-full h-full object-cover"
           />
         ) : (
           <div
@@ -112,7 +152,6 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
               filter: cplFilterActive ? 'contrast(1.15) saturate(0.9)' : 'none',
             }}
           >
-            {/* Simulated metallic car door overlay with realistic lighting reflection */}
             <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-slate-900/40 to-slate-800/30 backdrop-blur-[1px]" />
           </div>
         )}
@@ -123,19 +162,20 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
           <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-white/20" />
         </div>
 
-        {/* Target Overlay (Dashed Ghost Silhouette) */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          <svg
-            className="w-2/3 max-w-xl opacity-30 stroke-white fill-none animate-pulse"
-            strokeDasharray="8 4"
-            strokeWidth="2"
-            viewBox="0 0 400 300"
-          >
-            {/* Stylized Car Door Contour */}
-            <path d="M 50 150 Q 50 50, 150 50 L 300 60 Q 350 100, 350 200 L 330 280 L 80 270 Z" />
-            <path d="M 150 50 L 150 150" strokeDasharray="none" />
-          </svg>
-        </div>
+        {/* Target Overlay (Dashed Ghost Silhouette) - only while aiming */}
+        {!isCaptured && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <svg
+              className="w-2/3 max-w-xl opacity-30 stroke-white fill-none animate-pulse"
+              strokeDasharray="8 4"
+              strokeWidth="2"
+              viewBox="0 0 400 300"
+            >
+              <path d="M 50 150 Q 50 50, 150 50 L 300 60 Q 350 100, 350 200 L 330 280 L 80 270 Z" />
+              <path d="M 150 50 L 150 150" strokeDasharray="none" />
+            </svg>
+          </div>
+        )}
 
         {/* AI Laser Scanning Beam Effect when analyzing */}
         {isAnalyzing && (
@@ -164,7 +204,6 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
                 }}
                 onClick={onOpenDefectReview}
               >
-                {/* Defect Label Tag */}
                 <div
                   className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-lg ${
                     isDent ? 'bg-[#e11d48] text-white' : 'bg-[#df7412] text-white'
@@ -184,58 +223,96 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
           })}
         </div>
 
-        {/* Top Right Floating Status Badges */}
+        {/* Top Left: Zone Info Pill + Upload */}
+        <div className="absolute top-4 left-4 z-40 flex items-center gap-2 max-w-[62%]">
+          <div className="bg-[#2a2a2a]/95 border border-[#424754] rounded-lg px-3 py-1.5 flex items-center gap-2 backdrop-blur-md shadow-lg min-w-0">
+            <h3 className="text-sm font-bold text-[#e5e2e1] truncate">
+              {currentZone.name}
+            </h3>
+            {currentZone.status === 'FAIL' && (
+              <span className="text-[10px] bg-[#e11d48] text-white px-1.5 py-0.5 rounded font-bold shrink-0">
+                FAIL ({currentZone.defects.length})
+              </span>
+            )}
+            {currentZone.status === 'PASS' && (
+              <span className="text-[10px] bg-[#10b981] text-black px-1.5 py-0.5 rounded font-bold shrink-0">
+                PASS
+              </span>
+            )}
+            {currentZone.status === 'WARN' && (
+              <span className="text-[10px] bg-[#f59e0b] text-black px-1.5 py-0.5 rounded font-bold shrink-0">
+                WARN
+              </span>
+            )}
+          </div>
+
+          {currentZone.defects.length > 0 && (
+            <button
+              onClick={onOpenDefectReview}
+              className="px-2.5 py-1.5 rounded-lg border border-[#adc6ff]/40 bg-[#4d8eff]/20 text-[#adc6ff] text-[11px] font-bold uppercase tracking-wider hover:bg-[#4d8eff]/30 transition-colors"
+            >
+              View ({currentZone.defects.length})
+            </button>
+          )}
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-8 h-8 rounded-lg border border-[#424754] bg-[#1c1b1b]/80 backdrop-blur-md text-[#8c909f] flex items-center justify-center hover:text-white hover:border-[#adc6ff] transition-colors"
+            title="Upload Photo"
+          >
+            <Upload className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Top Right Floating Control Buttons */}
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
-          {/* CPL Filter Button */}
           <button
             onClick={onToggleCplFilter}
-            className={`px-3 py-1.5 rounded-lg border backdrop-blur-md flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition-all shadow-md ${
+            title="CPL Filter"
+            className={`w-10 h-10 rounded-full border backdrop-blur-md flex items-center justify-center transition-all shadow-md ${
               cplFilterActive
-                ? 'bg-[#2a2a2a]/90 text-[#e5e2e1] border-[#4d8eff] shadow-[#4d8eff]/20'
+                ? 'bg-[#2a2a2a]/90 text-[#adc6ff] border-[#4d8eff]'
                 : 'bg-[#1c1b1b]/70 text-[#8c909f] border-[#353534]'
             }`}
           >
-            <Sliders className={`w-3.5 h-3.5 ${cplFilterActive ? 'text-[#adc6ff]' : 'text-[#8c909f]'}`} />
-            <span>Filter CPL {cplFilterActive ? 'Active' : 'Off'}</span>
+            <Sliders className="w-4 h-4" />
           </button>
 
-          {/* Lighting Badge */}
           <button
             onClick={onToggleLighting}
-            className={`px-3 py-1.5 rounded-lg border backdrop-blur-md flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition-all shadow-md ${
+            title="Lighting"
+            className={`w-10 h-10 rounded-full border backdrop-blur-md flex items-center justify-center transition-all shadow-md ${
               lightingGood
-                ? 'bg-[#2a2a2a]/90 text-[#e5e2e1] border-[#10b981]'
+                ? 'bg-[#2a2a2a]/90 text-[#10b981] border-[#10b981]'
                 : 'bg-[#1c1b1b]/70 text-[#f59e0b] border-[#f59e0b]/50'
             }`}
           >
-            <Lightbulb
-              className={`w-3.5 h-3.5 ${lightingGood ? 'text-[#adc6ff] fill-[#adc6ff]' : 'text-[#f59e0b]'}`}
-            />
-            <span>Lighting: {lightingGood ? 'Good' : 'Low'}</span>
+            <Lightbulb className="w-4 h-4" />
           </button>
 
-          {/* Toggle Live Camera / Simulated Image */}
           <button
-            onClick={() => setUseLiveWebcam(!useLiveWebcam)}
-            className="px-3 py-1.5 rounded-lg border border-[#424754] bg-[#201f1f]/80 backdrop-blur-md text-[#e5e2e1] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-[#353534]"
+            onClick={() => {
+              setUseLiveWebcam(!useLiveWebcam);
+              setCapturedImage(null);
+            }}
+            title={useLiveWebcam ? 'Webcam Active' : 'Simulated Feed'}
+            className="w-10 h-10 rounded-full border border-[#424754] bg-[#201f1f]/80 backdrop-blur-md text-[#e5e2e1] flex items-center justify-center hover:bg-[#353534] transition-colors"
           >
-            <Camera className="w-3.5 h-3.5 text-[#adc6ff]" />
-            <span>{useLiveWebcam ? 'Webcam Active' : 'Simulated Feed'}</span>
+            <Camera className="w-4 h-4 text-[#adc6ff]" />
           </button>
 
-          {/* Manual Add Defect Button */}
           <button
             onClick={onOpenAddDefectModal}
-            className="px-3 py-1.5 rounded-lg border border-[#adc6ff]/40 bg-[#4d8eff]/20 text-[#adc6ff] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-[#4d8eff]/30"
+            title="Add Defect"
+            className="w-10 h-10 rounded-full border border-[#adc6ff]/40 bg-[#4d8eff]/20 text-[#adc6ff] flex items-center justify-center hover:bg-[#4d8eff]/30 transition-colors"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>Add Defect</span>
+            <PlusCircle className="w-4 h-4" />
           </button>
         </div>
 
         {/* Notification Toast if webcam error */}
         {webcamError && (
-          <div className="absolute top-4 left-4 right-4 z-40 bg-[#1c1b1b]/95 border border-[#f59e0b] px-3 py-2.5 rounded-lg text-xs text-[#f59e0b] flex items-center gap-2 backdrop-blur-md">
+          <div className="absolute bottom-44 left-4 right-4 z-40 bg-[#1c1b1b]/95 border border-[#f59e0b] px-3 py-2.5 rounded-lg text-xs text-[#f59e0b] flex items-center gap-2 backdrop-blur-md">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span className="flex-1">{webcamError}</span>
             <button
@@ -248,74 +325,50 @@ export const CameraViewport: React.FC<CameraViewportProps> = ({
         )}
       </div>
 
-      {/* Bottom Action Card & Shutter Button */}
-      <div className="relative z-40 px-4 pb-28 md:pb-24 flex justify-between items-end gap-4 pointer-events-none">
-        {/* Zone Info Overlay Card */}
-        <div className="bg-[#2a2a2a]/95 p-4 rounded-xl border border-[#424754] flex flex-col gap-1 max-w-xs backdrop-blur-md shadow-2xl pointer-events-auto">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-[#e5e2e1] flex items-center gap-2">
-              <span>{currentZone.name}</span>
-              {currentZone.status === 'FAIL' && (
-                <span className="text-xs bg-[#e11d48] text-white px-2 py-0.5 rounded font-bold">
-                  FAIL ({currentZone.defects.length})
-                </span>
-              )}
-              {currentZone.status === 'PASS' && (
-                <span className="text-xs bg-[#10b981] text-white px-2 py-0.5 rounded font-bold">
-                  PASS
-                </span>
-              )}
-            </h3>
+      {/* File Upload Hidden Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept="image/*"
+        className="hidden"
+      />
 
-            {currentZone.defects.length > 0 && (
-              <button
-                onClick={onOpenDefectReview}
-                className="text-xs text-[#adc6ff] underline font-bold hover:text-white"
-              >
-                View ({currentZone.defects.length})
-              </button>
-            )}
-          </div>
-          <p className="text-xs text-[#c2c6d6]">
-            Align vehicle part with ghost outline for optimal AI scanning.
-          </p>
-
-          {/* File Upload Hidden Input */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept="image/*"
-            className="hidden"
-          />
-
+      {/* Bottom Controls: Capture / Retake / Analyze */}
+      <div className="absolute left-0 right-0 bottom-[152px] z-40 flex flex-col items-center gap-3 pointer-events-none px-4">
+        {isCaptured && !isAnalyzing && (
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="mt-2 text-[11px] text-[#adc6ff] flex items-center gap-1.5 hover:underline"
+            onClick={handleAnalyze}
+            className="pointer-events-auto flex items-center gap-2 py-2.5 px-6 rounded-xl bg-[#4d8eff] hover:bg-[#adc6ff] text-[#00285d] font-bold shadow-xl transition-all active:scale-95"
           >
-            <Upload className="w-3 h-3" />
-            <span>Upload Photo for AI Analysis</span>
+            <Zap className="w-4 h-4" />
+            <span>Analyze Photo</span>
           </button>
-        </div>
+        )}
 
-        {/* Large Shutter Button */}
         <div className="pointer-events-auto flex flex-col items-center gap-2">
           <button
-            onClick={() => onTriggerAiScan(currentZone.id)}
+            onClick={handleShutter}
             disabled={isAnalyzing}
             className={`w-[72px] h-[72px] rounded-full bg-[#4d8eff] flex items-center justify-center border-4 border-[#353534] shadow-2xl transition-all duration-200 ${
-              isAnalyzing ? 'animate-spin bg-[#353534]' : 'hover:scale-105 active:scale-95 hover:bg-[#adc6ff]'
+              isAnalyzing
+                ? 'animate-spin bg-[#353534]'
+                : isCaptured
+                ? 'bg-[#2a2a2a] border-[#e11d48]'
+                : 'hover:scale-105 active:scale-95 hover:bg-[#adc6ff]'
             }`}
-            title="Capture & Run AI Surface Scan"
+            title={isCaptured ? 'Retake Photo' : 'Capture Photo'}
           >
             {isAnalyzing ? (
               <RotateCcw className="w-8 h-8 text-[#adc6ff]" />
+            ) : isCaptured ? (
+              <RotateCcw className="w-8 h-8 text-[#e11d48]" />
             ) : (
               <Camera className="w-8 h-8 text-[#002e6a] fill-[#002e6a]" />
             )}
           </button>
           <span className="text-[10px] font-bold text-[#8c909f] uppercase tracking-wider bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
-            {isAnalyzing ? 'Scanning...' : 'TAP TO SCAN'}
+            {isAnalyzing ? 'Scanning...' : isCaptured ? 'Retake' : 'TAP TO CAPTURE'}
           </span>
         </div>
       </div>

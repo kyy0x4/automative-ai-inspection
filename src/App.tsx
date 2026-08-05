@@ -91,7 +91,7 @@ export default function App() {
       />
 
       {/* Main Active View (Camera vs Dashboard) */}
-      <main className="flex-1 flex flex-col pt-16 h-[calc(100vh-4rem)] overflow-hidden relative">
+      <main className="flex-1 mt-16 flex flex-col overflow-hidden relative">
         {activeView === 'camera' ? (
           <CameraViewport
             currentZone={currentZone}
