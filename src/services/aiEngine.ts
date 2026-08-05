@@ -10,6 +10,7 @@
  */
 import * as ort from 'onnxruntime-web';
 import { Defect, ZoneStatus } from '../types';
+import { MODEL_CONFIG } from './modelConfig';
 
 export interface AnalyzeResult {
   status: ZoneStatus;
@@ -28,25 +29,13 @@ interface DetBox {
   score: number;
 }
 
-const IMG_SIZE = 640;
-const CONF_THRESHOLD = 0.3;
-const IOU_THRESHOLD = 0.45;
+const IMG_SIZE = MODEL_CONFIG.inputSize;
+const CONF_THRESHOLD = MODEL_CONFIG.confThreshold;
+const IOU_THRESHOLD = MODEL_CONFIG.iouThreshold;
 
-const MODEL_URL = '/models/yolov8n.onnx';
+const MODEL_URL = `/models/${MODEL_CONFIG.fileName}`;
 
-// TODO: Replace with your trained defect classes, e.g.
-// ['dent', 'scratch', 'chipping', 'crack', 'rust', 'paint_discoloration']
-const MODEL_CLASSES = [
-  'person','bicycle','car','motorcycle','airplane','bus','train','truck','boat',
-  'traffic light','fire hydrant','stop sign','parking meter','bench','bird','cat',
-  'dog','horse','sheep','cow','elephant','bear','zebra','giraffe','backpack','umbrella',
-  'handbag','tie','suitcase','frisbee','skis','snowboard','sports ball','kite','baseball bat',
-  'baseball glove','skateboard','surfboard','tennis racket','bottle','wine glass','cup','fork',
-  'knife','spoon','bowl','banana','apple','sandwich','orange','broccoli','carrot','hot dog',
-  'pizza','donut','cake','chair','couch','potted plant','bed','dining table','toilet','tv',
-  'laptop','mouse','remote','keyboard','cell phone','microwave','oven','toaster','sink',
-  'refrigerator','book','clock','vase','scissors','teddy bear','hair drier','toothbrush',
-];
+const MODEL_CLASSES = MODEL_CONFIG.classes;
 
 let session: ort.InferenceSession | null = null;
 let modelReady = false;
@@ -57,7 +46,7 @@ export function getModelStatus() {
   return {
     ready: modelReady,
     error: modelError,
-    name: modelReady ? 'yolov8n.onnx (COCO placeholder)' : 'simulated (no model loaded)',
+    name: modelReady ? MODEL_CONFIG.fileName : 'simulated (no model loaded)',
   };
 }
 
@@ -205,9 +194,7 @@ function postprocess(
       severity: severity as Defect['severity'],
       confidence: Math.max(5, Math.round(b.score * 100)),
       location: zoneName || 'Vehicle Surface',
-      description: `Detected "${className}" (${Math.round(b.score * 100)}% confidence). ${
-        modelReady ? 'COCO placeholder detection — replace with trained defect model.' : ''
-      }`,
+      description: `Detected "${className}" (${Math.round(b.score * 100)}% confidence). Model: ${MODEL_CONFIG.fileName}.`,
       bbox: {
         x: (b.x / imgW) * 100,
         y: (b.y / imgH) * 100,
@@ -280,7 +267,7 @@ export async function analyzeImage(
         defects.length > 0
           ? `${defects.length} object(s) detected by on-device model.`
           : 'No objects detected. (Placeholder COCO model — trained defect model coming soon.)',
-      modelName: 'yolov8n.onnx (COCO placeholder)',
+      modelName: MODEL_CONFIG.fileName,
     };
   } catch (err) {
     console.error('On-device inference error:', err);
