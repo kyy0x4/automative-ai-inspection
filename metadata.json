@@ -1,0 +1,10 @@
+{
+  "name": "Automotive AI Inspection",
+  "description": "Mobile-first AI vehicle inspection camera and real-time cross-platform zone diagnostic app",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
