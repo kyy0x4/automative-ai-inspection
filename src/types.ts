@@ -4,7 +4,7 @@
 
 export type DefectSeverity = 'MICRO' | 'MINOR' | 'MODERATE' | 'SEVERE';
 
-export type DefectType = 'Dent' | 'Chipping' | 'Scratch' | 'Cracked' | 'Rust' | 'Paint Discoloration';
+export type DefectType = 'Dent' | 'Chipping' | 'Scratch' | 'Cracked' | 'Rust' | 'Paint Discoloration' | 'Glass Shatter' | 'Lamp Broken' | 'Tire Flat';
 
 export interface BoundingBox {
   x: number; // percentage 0 - 100

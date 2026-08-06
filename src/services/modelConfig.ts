@@ -9,6 +9,16 @@
  *   4. Set `classes` to your defect labels — MUST match the class order
  *      used during training (index 0, 1, 2, ...).
  *
+ * ═══════════════════════════════════════════════════════════════
+ * ✅ CarDD TRAINED MODEL TEMPLATE (uncomment setelah training):
+ * ═══════════════════════════════════════════════════════════════
+ *   fileName: 'best.onnx',
+ *   classes: ['dent', 'scratch', 'crack', 'glass shatter', 'lamp broken', 'tire flat'],
+ *   inputSize: 640,
+ *   confThreshold: 0.3,
+ *   iouThreshold: 0.45,
+ * ═══════════════════════════════════════════════════════════════
+ *
  * The rest of the app picks up these values automatically.
  */
 
